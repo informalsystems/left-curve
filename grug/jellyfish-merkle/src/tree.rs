@@ -376,10 +376,13 @@ impl<'a> MerkleTree<'a> {
         existing_leaf: Option<LeafNode>,
     ) -> StdResult<Outcome> {
         let new_node = match (batch.len(), existing_leaf) {
+            //@audit not ending up here or in next match from apply_at_leaf
             (0, None) => {
                 return Ok(Outcome::Unchanged(None));
             },
             (0, Some(leaf_node)) => Node::Leaf(leaf_node),
+            //@audit this means that we only have 1 insert in the batch, and now we are consuming it in only_item(batch
+            // this leaves the batch empty after this match step, this will replace us as a leaf, since we are deleting a leaf (from apply_at_leaf)
             (1, None) => {
                 let (key_hash, value_hash) = only_item(batch);
                 Node::Leaf(LeafNode {
@@ -676,13 +679,13 @@ fn into_child(version: u64, outcome: Outcome) -> Option<Child> {
 //
 //           root
 //         ┌──┴──┐
-//        (0)    1
+//        (0)    1(a)
 //      ┌──┴──┐
 //    null   (01)
 //         ┌──┴──┐
-//        010  (011)
+//      010(r)  (011)
 //            ┌──┴──┐
-//          0110   0111
+//        0110(m)  0111(L)
 //
 // to build this tree, we need four keys that hash to 010..., 0110..., 0111...,
 // and 1... respectively, which were found with a little trials:
@@ -727,7 +730,7 @@ fn into_child(version: u64, outcome: Outcome) -> Option<Child> {
 // = cb640e68682628445a3e0713fafe91b9cefe4f81c2337e9d3df201d81ae70222
 //
 // root hash
-// = sha256(00 | b843a96765fc40641227234e9f9a2736c2e0cdf8fb2dc54e358bb4fa29a61042 | cb640e68682628445a3e0713fafe91b9cefe4f81c2337e9d3df201d81ae70222)
+// = sha256(  | b843a96765fc40641227234e9f9a2736c2e0cdf8fb2dc54e358bb4fa29a61042 | cb640e68682628445a3e0713fafe91b9cefe4f81c2337e9d3df201d81ae70222)
 // = ae08c246d53a8ff3572a68d5bba4d610aaaa765e3ef535320c5653969aaa031b
 
 #[cfg(test)]
@@ -781,6 +784,133 @@ mod tests {
             ]),
         )?;
         Ok((storage, root_hash))
+    }
+
+    #[test]
+    fn comprehensive_understanding_of_tree() {
+        {   
+            //empty tree
+            let mut storage = MockStorage::new();
+            let _ = TREE.apply_raw(
+                &mut storage,
+                0,
+                0,
+                &Batch::from([])).unwrap();
+            for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
+                let a = TREE.nodes.may_load(&storage, (0, &(key.unwrap()).1));
+                println!("{:?}", a.unwrap());
+            }
+        }
+        println!("--------------------------------------------------------------");
+        {   
+            print!("tree with only left leaf
+in nodes map there is only one leaf present and no other nodes (hence there is nothing except one leaf)
+           root
+         ┌──┴──┐
+        null  1(a)\n");
+            let mut storage = MockStorage::new();
+            let _ = TREE.apply_raw(
+                &mut storage,
+                0,
+                0,
+                &Batch::from([
+                // (b"r".to_vec(), Op::Insert(b"foo".to_vec())),
+                // (b"m".to_vec(), Op::Insert(b"bar".to_vec())),
+                // (b"L".to_vec(), Op::Insert(b"fuzz".to_vec())),
+                (b"a".to_vec(), Op::Insert(b"buzz".to_vec())),
+                ])).unwrap();
+            for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
+                let a = TREE.nodes.may_load(&storage, (0, &(key.unwrap()).1));
+                println!("{:?}", a.unwrap());
+            }
+        }
+        println!("--------------------------------------------------------------");
+        {   
+            print!("tree with left and right leaf
+in this case, why is here internal node? so internal nodes hash is root hash? 
+           root
+         ┌──┴──┐
+        0(r)  1(a)\n");
+            let mut storage = MockStorage::new();
+            let _ = TREE.apply_raw(
+                &mut storage,
+                0,
+                0,
+                &Batch::from([
+                    (b"r".to_vec(), Op::Insert(b"foo".to_vec())),
+                    // (b"m".to_vec(), Op::Insert(b"bar".to_vec())),
+                    // (b"L".to_vec(), Op::Insert(b"fuzz".to_vec())),
+                    (b"a".to_vec(), Op::Insert(b"buzz".to_vec())),
+                ])).unwrap();
+            for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
+                let a = TREE.nodes.may_load(&storage, (0, &(key.unwrap()).1));
+                println!("{:?}", a.unwrap());
+            }
+        }
+        println!("--------------------------------------------------------------");
+        {
+            print!("
+tree with left and right leaf
+In my understanding it should be like this
+    root(011)   
+    ┌──┴──┐
+0110(m) 0111(L)");
+            println!("
+However it looks like this. Is this because
+        root (marked as internal node with left child)
+        ┌──┴──┐
+       (0)   null
+     ┌──┴──┐
+    null   (01)
+          ┌──┴──┐
+        null  (011)
+             ┌──┴──┐
+          0(m)    1(L)
+          \n");
+            let mut storage = MockStorage::new();
+            let _ = TREE.apply_raw(
+            &mut storage,
+            0,
+            0,
+            &Batch::from([
+                // (b"r".to_vec(), Op::Insert(b"foo".to_vec())),
+                (b"m".to_vec(), Op::Insert(b"bar".to_vec())),
+                (b"L".to_vec(), Op::Insert(b"fuzz".to_vec())),
+                // (b"a".to_vec(), Op::Insert(b"buzz".to_vec())),
+            ]),
+            );
+            for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
+                let a = TREE.nodes.may_load(&storage, (0, &(key.unwrap()).1));
+                println!("{:?}", a.unwrap());
+            }
+        }
+        println!("--------------------------------------------------------------");
+        {
+            print!("tree with one right leaf, with sibiling being internal node whose left is none, and right bears two leafs
+           root
+         ┌──┴──┐
+        (0)   1(a)
+      ┌──┴──┐
+     null  (01)
+          ┌──┴──┐
+       010(r)  011 (1..)(L)\n");
+            let mut storage = MockStorage::new();
+            let _ = TREE.apply_raw(
+            &mut storage,
+            0,
+            0,
+            &Batch::from([
+                (b"r".to_vec(), Op::Insert(b"foo".to_vec())),
+                // (b"m".to_vec(), Op::Insert(b"bar".to_vec())),
+                (b"L".to_vec(), Op::Insert(b"fuzz".to_vec())),
+                (b"a".to_vec(), Op::Insert(b"buzz".to_vec())),
+            ]),
+            );
+            for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
+                let a = TREE.nodes.may_load(&storage, (0, &(key.unwrap()).1));
+                println!("{:?}", a.unwrap());
+            }
+        }
     }
 
     #[test]
