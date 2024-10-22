@@ -797,8 +797,8 @@ mod tests {
                 0,
                 &Batch::from([])).unwrap();
             for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
-                let a = TREE.nodes.may_load(&storage, (0, &(key.unwrap()).1));
-                println!("{:?}", a.unwrap());
+                let a = TREE.nodes.may_load(&storage, (0, &(key.clone().unwrap()).1));
+                println!("{:?} {:?}", a.unwrap(), key);
             }
         }
         println!("--------------------------------------------------------------");
@@ -820,8 +820,8 @@ in nodes map there is only one leaf present and no other nodes (hence there is n
                 (b"a".to_vec(), Op::Insert(b"buzz".to_vec())),
                 ])).unwrap();
             for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
-                let a = TREE.nodes.may_load(&storage, (0, &(key.unwrap()).1));
-                println!("{:?}", a.unwrap());
+                let a = TREE.nodes.may_load(&storage, (0, &(key.clone().unwrap()).1));
+                println!("{:?} {:?}", a.unwrap(), key);
             }
         }
         println!("--------------------------------------------------------------");
@@ -843,8 +843,8 @@ in this case, why is here internal node? so internal nodes hash is root hash?
                     (b"a".to_vec(), Op::Insert(b"buzz".to_vec())),
                 ])).unwrap();
             for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
-                let a = TREE.nodes.may_load(&storage, (0, &(key.unwrap()).1));
-                println!("{:?}", a.unwrap());
+                let a = TREE.nodes.may_load(&storage, (0, &(key.clone().unwrap()).1));
+                println!("{:?} {:?}", a.unwrap(), key);
             }
         }
         println!("--------------------------------------------------------------");
@@ -880,8 +880,8 @@ However it looks like this. Is this because
             ]),
             );
             for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
-                let a = TREE.nodes.may_load(&storage, (0, &(key.unwrap()).1));
-                println!("{:?}", a.unwrap());
+                let a = TREE.nodes.may_load(&storage, (0, &(key.clone().unwrap()).1));
+                println!("{:?} \n {:?}", a.unwrap(), key.unwrap());
             }
         }
         println!("--------------------------------------------------------------");
@@ -907,8 +907,8 @@ However it looks like this. Is this because
             ]),
             );
             for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
-                let a = TREE.nodes.may_load(&storage, (0, &(key.unwrap()).1));
-                println!("{:?}", a.unwrap());
+                let a = TREE.nodes.may_load(&storage, (0, &(key.clone().unwrap()).1));
+                println!("{:?} {:?}", a.unwrap(), key);
             }
         }
     }
