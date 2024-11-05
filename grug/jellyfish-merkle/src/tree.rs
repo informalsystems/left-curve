@@ -783,6 +783,105 @@ mod tests {
         Ok((storage, root_hash))
     }
 
+    use std::collections::{BTreeMap, HashMap};
+
+    fn parse_to_batch(input: &str) -> Batch {
+        // Lookup table for `key_hash` to character mappings
+        let mut table = HashMap::new();
+        table.insert([0, 0, 0, 0], 'u');
+        table.insert([0, 0, 0, 1], 'p');
+        table.insert([0, 0, 1, 0], 'f');
+        table.insert([0, 0, 1, 1], 'e');
+        table.insert([0, 1, 0, 0], 'r');
+        table.insert([0, 1, 0, 1], 'w');
+        table.insert([0, 1, 1, 0], 'm');
+        table.insert([0, 1, 1, 1], 'L');
+        table.insert([1, 0, 0, 0], 'q');
+        table.insert([1, 0, 0, 1], '&');
+        table.insert([1, 0, 1, 0], 'h');
+        table.insert([1, 0, 1, 1], 'Z');
+        table.insert([1, 1, 0, 0], 'a');
+        table.insert([1, 1, 0, 1], '<');
+        table.insert([1, 1, 1, 0], 't');
+        table.insert([1, 1, 1, 1], 'W');
+
+        // Initialize the output as a Batch object with an empty BTreeMap
+        let mut batch = BTreeMap::new();
+
+        // Regex to capture key_hash and Insert operations
+        let insert_re = regex::Regex::new(
+            r"\{ key_hash: \[(\d), (\d), (\d), (\d)\], op: Insert\(\[(\d+)\]\) \}",
+        )
+        .unwrap();
+        // Regex to capture key_hash and Delete operations
+        let delete_re =
+            regex::Regex::new(r"\{ key_hash: \[(\d), (\d), (\d), (\d)\], op: Delete \}").unwrap();
+
+        // Process Insert operations
+        for cap in insert_re.captures_iter(input) {
+            let key_hash = [
+                cap[1].parse::<u8>().unwrap(),
+                cap[2].parse::<u8>().unwrap(),
+                cap[3].parse::<u8>().unwrap(),
+                cap[4].parse::<u8>().unwrap(),
+            ];
+            let value = cap[5].parse::<u8>().unwrap();
+
+            if let Some(&ch) = table.get(&key_hash) {
+                batch.insert(vec![ch as u8], Op::Insert(vec![value]));
+            }
+        }
+
+        // Process Delete operations
+        for cap in delete_re.captures_iter(input) {
+            let key_hash = [
+                cap[1].parse::<u8>().unwrap(),
+                cap[2].parse::<u8>().unwrap(),
+                cap[3].parse::<u8>().unwrap(),
+                cap[4].parse::<u8>().unwrap(),
+            ];
+
+            if let Some(&ch) = table.get(&key_hash) {
+                batch.insert(vec![ch as u8], Op::Delete);
+            }
+        }
+
+        batch
+    }
+
+    #[test]
+    fn reproducing_from_quint() {
+        let mut storage = MockStorage::new();
+
+        let b1 = parse_to_batch(
+            r#"
+ Set({ key_hash: [0, 0, 1, 0], op: Insert([12]) }, { key_hash: [0, 1, 0, 0], op: Insert([4]) }, { key_hash: [1, 0, 0, 0], op: Insert([14]) }, { key_hash: [1, 0, 1, 0], op: Insert([10]) }, { key_hash: [1, 1, 0, 0], op: Delete })
+    "#,
+        );
+        let b2 = parse_to_batch(
+            r#"
+ Set({ key_hash: [0, 0, 0, 1], op: Insert([8]) }, { key_hash: [0, 1, 1, 0], op: Insert([5]) }, { key_hash: [1, 0, 0, 0], op: Delete }, { key_hash: [1, 0, 0, 1], op: Delete }, { key_hash: [1, 1, 1, 0], op: Insert([10]) }),
+    "#,
+        );
+        let b3 = parse_to_batch(
+            r#"
+  Set({ key_hash: [0, 0, 0, 0], op: Delete }, { key_hash: [0, 0, 1, 1], op: Insert([7]) }, { key_hash: [0, 1, 0, 0], op: Insert([3]) }, { key_hash: [0, 1, 0, 1], op: Insert([8]) }, { key_hash: [1, 0, 0, 1], op: Insert([2]) })
+    "#,
+        );
+
+        let _ = TREE.apply_raw(&mut storage, 0, 1, &b1);
+        let _ = TREE.apply_raw(&mut storage, 1, 2, &b2);
+        let _ = TREE.apply_raw(&mut storage, 2, 3, &b3);
+
+        for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
+            let a = TREE.nodes.may_load(
+                &storage,
+                ((key.clone().unwrap()).0, &(key.clone().unwrap()).1),
+            );
+            println!("{:?}: {:#?}", key.unwrap(), a.unwrap());
+        }
+    }
+
     #[test]
     fn applying_initial_batch() {
         let (storage, root_hash) = build_test_case().unwrap();

@@ -1643,6 +1643,7 @@ dependencies = [
  "ics23",
  "proptest",
  "rand",
+ "regex",
  "serde",
  "test-case",
  "thiserror",

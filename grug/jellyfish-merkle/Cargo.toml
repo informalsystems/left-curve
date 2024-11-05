@@ -25,6 +25,7 @@ grug-types   = { workspace = true }
 ics23        = { workspace = true, optional = true }
 serde        = { workspace = true, features = ["derive"] }
 thiserror    = { workspace = true }
+regex = "1"
 
 [dev-dependencies]
 hex-literal = { workspace = true }
