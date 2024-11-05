@@ -1,10 +1,10 @@
 "use client";
 
 import { Fragment, useRef, useState } from "react";
-import { twMerge } from "~/utils";
+import { twMerge } from "../../utils";
 
 import { useClickAway } from "react-use";
-import { BellIcon, Button, CloseIcon } from "~/components";
+import { BellIcon, Button, CloseIcon } from "../";
 import { NotificationCard } from "./NotificationCard";
 
 const mockNotifications = [
@@ -47,9 +47,17 @@ export const MenuNotifications: React.FC = () => {
 
   return (
     <>
-      <Button ref={buttonRef} className="h-10 w-fit px-2" onClick={() => setShowMenu(!showMenu)}>
+      <Button
+        ref={buttonRef}
+        onClick={() => setShowMenu(!showMenu)}
+        color="gray"
+        radius="lg"
+        isIconOnly
+        className="font-bold"
+      >
         <BellIcon className="h-6 w-6" />
       </Button>
+
       <div
         ref={menuRef}
         className={twMerge(
@@ -62,11 +70,7 @@ export const MenuNotifications: React.FC = () => {
             Notifications
           </p>
           <div className="flex gap-2">
-            <Button
-              className="h-10 w-10 px-2 rounded-xl"
-              onClick={() => setShowMenu(false)}
-              color="danger"
-            >
+            <Button isIconOnly radius="lg" onClick={() => setShowMenu(false)}>
               <CloseIcon className="h-6 w-6" />
             </Button>
           </div>

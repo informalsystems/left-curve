@@ -2,7 +2,7 @@ import { parseAsn1Signature, requestWebAuthnSignature, sha256 } from "@leftcurve
 import { encodeBase64, encodeUtf8, serialize } from "@leftcurve/encoding";
 import { createKeyHash, createUserClient } from "@leftcurve/sdk";
 import { getAccountsByUsername, getKeysByUsername } from "@leftcurve/sdk/actions";
-import { createConnector } from "./createConnector";
+import { createConnector } from "./createConnector.js";
 
 import type { UserClient } from "@leftcurve/sdk/clients";
 import { ConnectorSigner } from "@leftcurve/sdk/signers";
@@ -92,8 +92,9 @@ export function passkey(parameters: PasskeyConnectorParameters = {}) {
       async isAuthorized() {
         return _isAuthorized;
       },
-      async requestSignature({ messages, chainId, sequence }) {
-        const bytes = sha256(serialize({ messages, chainId, sequence }));
+      async requestSignature(signDoc) {
+        const { sender, messages, chainId, sequence } = signDoc;
+        const bytes = sha256(serialize({ sender, messages, chainId, sequence }));
 
         const {
           webauthn,
@@ -118,7 +119,7 @@ export function passkey(parameters: PasskeyConnectorParameters = {}) {
         const credential = { passkey };
         const keyHash = createKeyHash({ credentialId, keyAlgo: KeyAlgo.Secp256r1 });
 
-        return { credential, keyHash, signDoc: { messages, chainId, sequence } };
+        return { credential, keyHash, signDoc };
       },
       onConnect({ chainId, username }) {
         _username = username;

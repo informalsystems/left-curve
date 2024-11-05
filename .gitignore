@@ -15,6 +15,7 @@
 
 # Node.js
 **/node_modules
+**/tsconfig.tsbuildinfo
 **/build
 **/.turbo
 
@@ -22,7 +23,7 @@
 sdk/docs
 
 # UI
-*.astro
+**/.astro
 *storybook.log
 **/storybook-static
 

@@ -1,6 +1,6 @@
 use {
     crate::{GasTracker, GAS_COSTS},
-    grug_storage::{Codec, Item, Map, PrimaryKey},
+    grug_storage::{Codec, IndexedMap, Item, Map, PrimaryKey},
     grug_types::{Bound, Order, Record, StdResult, Storage},
 };
 
@@ -8,6 +8,14 @@ use {
 
 pub trait MeteredStorage {
     fn read_with_gas(&self, gas_tracker: GasTracker, key: &[u8]) -> StdResult<Option<Vec<u8>>>;
+
+    fn scan_with_gas<'a>(
+        &'a self,
+        gas_tracker: GasTracker,
+        min: Option<&[u8]>,
+        max: Option<&[u8]>,
+        order: Order,
+    ) -> StdResult<Box<dyn Iterator<Item = StdResult<Record>> + 'a>>;
 }
 
 impl<S> MeteredStorage for S
@@ -27,6 +35,19 @@ where
         }
 
         Ok(maybe_data)
+    }
+
+    fn scan_with_gas<'a>(
+        &'a self,
+        gas_tracker: GasTracker,
+        min: Option<&[u8]>,
+        max: Option<&[u8]>,
+        order: Order,
+    ) -> StdResult<Box<dyn Iterator<Item = StdResult<Record>> + 'a>> {
+        // Gas cost for creating an iterator.
+        gas_tracker.consume(GAS_COSTS.db_scan, "db_scan")?;
+
+        Ok(Box::new(self.scan(min, max, order).metered(gas_tracker)))
     }
 }
 
@@ -72,7 +93,9 @@ where
         min: Option<Bound<K>>,
         max: Option<Bound<K>>,
         order: Order,
-    ) -> StdResult<Box<dyn Iterator<Item = StdResult<(K::Output, T)>> + 'b>>;
+    ) -> StdResult<Box<dyn Iterator<Item = StdResult<(K::Output, T)>> + 'b>>
+    where
+        T: 'b;
 
     fn save_with_gas(
         &self,
@@ -94,7 +117,7 @@ where
         gas_tracker: GasTracker,
         key: K,
     ) -> StdResult<T> {
-        let data_raw = self.path(key).as_path().load_raw(storage)?;
+        let data_raw = self.path(key).load_raw(storage)?;
 
         gas_tracker.consume(GAS_COSTS.db_read.cost(data_raw.len()), "db_read/found")?;
 
@@ -107,7 +130,7 @@ where
         gas_tracker: GasTracker,
         key: K,
     ) -> StdResult<bool> {
-        match self.path(key).as_path().may_load_raw(storage) {
+        match self.path(key).may_load_raw(storage) {
             Some(data) => {
                 gas_tracker.consume(GAS_COSTS.db_read.cost(data.len()), "db_read/found")?;
                 Ok(true)
@@ -126,7 +149,10 @@ where
         min: Option<Bound<K>>,
         max: Option<Bound<K>>,
         order: Order,
-    ) -> StdResult<Box<dyn Iterator<Item = StdResult<(K::Output, T)>> + 'b>> {
+    ) -> StdResult<Box<dyn Iterator<Item = StdResult<(K::Output, T)>> + 'b>>
+    where
+        T: 'b,
+    {
         // Gas cost for creating an iterator.
         gas_tracker.consume(GAS_COSTS.db_scan, "db_scan")?;
 
@@ -155,15 +181,68 @@ where
 
         let gas_cost = GAS_COSTS
             .db_write
-            .cost(data_raw.len() + path.as_path().storage_key().len());
+            .cost(data_raw.len() + path.storage_key().len());
 
         // Charge gas before writing the data, such that if run out of gas,
         // the data isn't written.
         gas_tracker.consume(gas_cost, "db_write")?;
 
-        path.as_path().save_raw(storage, &data_raw);
+        path.save_raw(storage, &data_raw);
 
         Ok(())
+    }
+}
+
+// ------------------------------------ index map ------------------------------------
+
+impl<'a, K, T, I, C> MeteredMap<K, T> for IndexedMap<'a, K, T, I, C>
+where
+    K: PrimaryKey,
+    C: Codec<T>,
+{
+    fn load_with_gas(
+        &self,
+        storage: &dyn Storage,
+        gas_tracker: GasTracker,
+        key: K,
+    ) -> StdResult<T> {
+        self.primary.load_with_gas(storage, gas_tracker, key)
+    }
+
+    fn has_with_gas(
+        &self,
+        storage: &dyn Storage,
+        gas_tracker: GasTracker,
+        key: K,
+    ) -> StdResult<bool> {
+        self.primary.has_with_gas(storage, gas_tracker, key)
+    }
+
+    fn range_with_gas<'b>(
+        &self,
+        storage: &'b dyn Storage,
+        gas_tracker: GasTracker,
+        min: Option<Bound<K>>,
+        max: Option<Bound<K>>,
+        order: Order,
+    ) -> StdResult<Box<dyn Iterator<Item = StdResult<(K::Output, T)>> + 'b>>
+    where
+        T: 'b,
+    {
+        self.primary
+            .range_with_gas(storage, gas_tracker, min, max, order)
+    }
+
+    fn save_with_gas(
+        &self,
+        storage: &mut dyn Storage,
+        gas_tracker: GasTracker,
+        key: K,
+        value: &T,
+    ) -> StdResult<()> {
+        // TODO: this implementation doesn't account for gas cost of writing to
+        // the index set.
+        self.primary.save_with_gas(storage, gas_tracker, key, value)
     }
 }
 

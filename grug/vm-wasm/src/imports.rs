@@ -414,7 +414,9 @@ mod tests {
             db_read, db_remove, db_remove_range, db_scan, db_write, debug, read_from_memory,
             write_to_memory, Environment, VmResult, WasmVm, GAS_PER_OPERATION,
         },
-        grug_app::{GasTracker, QuerierProvider, Shared, StorageProvider, APP_CONFIGS, GAS_COSTS},
+        grug_app::{
+            AppCtx, GasTracker, QuerierProvider, Shared, StorageProvider, APP_CONFIGS, GAS_COSTS,
+        },
         grug_crypto::{Identity256, Identity512},
         grug_types::{
             encode_sections, json, Addr, BlockInfo, BorshDeExt, BorshSerExt, GenericResult,
@@ -533,12 +535,13 @@ mod tests {
             let storage_provider =
                 StorageProvider::new(Box::new(storage.clone()), &[NAMESPACE_CONTRACT]);
 
-            let querier_provider = QuerierProvider::new(
+            let querier_provider = QuerierProvider::new(AppCtx::new(
                 WasmVm::new(0),
                 Box::new(storage.clone()),
                 gas_tracker.clone(),
+                "dev-1",
                 MOCK_BLOCK,
-            );
+            ));
 
             let env = Environment::new(
                 storage_provider.clone(),
@@ -877,7 +880,7 @@ mod tests {
     )]
     #[test_case(
         "bar",
-        GenericResult::Err("data not found! type: serde_json::value::Value, storage key: AAphcHBfY29uZmlnYmFy".to_string());
+        GenericResult::Err("data not found! type: grug_types::json::Json, storage key: AAphcHBfY29uZmlnYmFy".to_string());
         "fails"
     )]
     fn query_chain_works(key: &str, value: GenericResult<QueryResponse>) {

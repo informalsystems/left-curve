@@ -5,12 +5,15 @@ use {
         auth::Key,
         bank,
         config::{ACCOUNT_FACTORY_KEY, IBC_TRANSFER_KEY},
-        mock_ibc_transfer, taxman, token_factory,
+        ibc_transfer,
+        lending::{self, MarketUpdates},
+        oracle::{self, GuardianSet, GUARDIANS_ADDRESSES, GUARDIAN_SETS_INDEX},
+        taxman, token_factory,
     },
     grug::{
-        btree_map, btree_set, Addr, Binary, Coin, Coins, Config, Denom, GenesisState, Hash160,
-        Hash256, HashExt, JsonSerExt, Message, NonZero, Part, Permission, Permissions, StdResult,
-        Udec128, Uint128, GENESIS_SENDER,
+        btree_map, btree_set, Addr, Binary, Coin, Coins, Config, Denom, Duration, GenesisState,
+        Hash160, Hash256, HashExt, Inner, JsonSerExt, Message, NonZero, Permission, Permissions,
+        StdResult, Udec128, Uint128, GENESIS_SENDER,
     },
     serde::Serialize,
     std::{collections::BTreeMap, error::Error, fs, io, path::Path, str::FromStr},
@@ -26,6 +29,8 @@ pub struct Contracts {
     pub amm: Addr,
     pub bank: Addr,
     pub ibc_transfer: Addr,
+    pub lending: Addr,
+    pub oracle: Addr,
     pub taxman: Addr,
     pub token_factory: Addr,
 }
@@ -33,11 +38,14 @@ pub struct Contracts {
 #[derive(Clone, Copy)]
 pub struct Codes<T> {
     pub account_factory: T,
-    pub account_spot: T,
+    pub account_margin: T,
     pub account_safe: T,
+    pub account_spot: T,
     pub amm: T,
     pub bank: T,
     pub ibc_transfer: T,
+    pub lending: T,
+    pub oracle: T,
     pub taxman: T,
     pub token_factory: T,
 }
@@ -50,21 +58,27 @@ pub struct GenesisUser {
 
 pub fn read_wasm_files(artifacts_dir: &Path) -> io::Result<Codes<Vec<u8>>> {
     let account_factory = fs::read(artifacts_dir.join("dango_account_factory.wasm"))?;
-    let account_spot = fs::read(artifacts_dir.join("dango_account_spot.wasm"))?;
+    let account_margin = fs::read(artifacts_dir.join("dango_account_margin.wasm"))?;
     let account_safe = fs::read(artifacts_dir.join("dango_account_safe.wasm"))?;
+    let account_spot = fs::read(artifacts_dir.join("dango_account_spot.wasm"))?;
     let amm = fs::read(artifacts_dir.join("dango_amm.wasm"))?;
     let bank = fs::read(artifacts_dir.join("dango_bank.wasm"))?;
     let ibc_transfer = fs::read(artifacts_dir.join("dango_ibc_transfer.wasm"))?;
+    let lending = fs::read(artifacts_dir.join("dango_lending.wasm"))?;
+    let oracle = fs::read(artifacts_dir.join("dango_oracle.wasm"))?;
     let taxman = fs::read(artifacts_dir.join("dango_taxman.wasm"))?;
     let token_factory = fs::read(artifacts_dir.join("dango_token_factory.wasm"))?;
 
     Ok(Codes {
         account_factory,
-        account_spot,
+        account_margin,
         account_safe,
+        account_spot,
         amm,
         bank,
         ibc_transfer,
+        lending,
+        oracle,
         taxman,
         token_factory,
     })
@@ -77,6 +91,7 @@ pub fn build_genesis<T, D>(
     fee_denom: D,
     fee_rate: Udec128,
     token_creation_fee: Option<Uint128>,
+    max_orphan_age: Duration,
 ) -> anyhow::Result<(GenesisState, Contracts, Addresses)>
 where
     T: Into<Binary>,
@@ -89,11 +104,14 @@ where
 
     // Upload all the codes and compute code hashes.
     let account_factory_code_hash = upload(&mut msgs, codes.account_factory);
-    let account_spot_code_hash = upload(&mut msgs, codes.account_spot);
+    let account_margin_code_hash = upload(&mut msgs, codes.account_margin);
     let account_safe_code_hash = upload(&mut msgs, codes.account_safe);
+    let account_spot_code_hash = upload(&mut msgs, codes.account_spot);
     let amm_code_hash = upload(&mut msgs, codes.amm);
     let bank_code_hash = upload(&mut msgs, codes.bank);
     let ibc_transfer_code_hash = upload(&mut msgs, codes.ibc_transfer);
+    let lending_code_hash = upload(&mut msgs, codes.lending);
+    let oracle_code_hash = upload(&mut msgs, codes.oracle);
     let taxman_code_hash = upload(&mut msgs, codes.taxman);
     let token_factory_code_hash = upload(&mut msgs, codes.token_factory);
 
@@ -111,8 +129,9 @@ where
         account_factory_code_hash,
         &account_factory::InstantiateMsg {
             code_hashes: btree_map! {
-                AccountType::Spot => account_spot_code_hash,
-                AccountType::Safe => account_safe_code_hash,
+                AccountType::Margin => account_margin_code_hash,
+                AccountType::Safe   => account_safe_code_hash,
+                AccountType::Spot   => account_spot_code_hash,
             },
             keys,
             users,
@@ -140,7 +159,7 @@ where
     let ibc_transfer = instantiate(
         &mut msgs,
         ibc_transfer_code_hash,
-        &mock_ibc_transfer::InstantiateMsg {},
+        &ibc_transfer::InstantiateMsg {},
         "dango/ibc_transfer",
         "dango/ibc_transfer",
     )?;
@@ -176,6 +195,19 @@ where
         "dango/amm",
     )?;
 
+    // Instantiate the lending pool contract.
+    let lending = instantiate(
+        &mut msgs,
+        lending_code_hash,
+        &lending::InstantiateMsg {
+            markets: btree_map! {
+                fee_denom.clone() => MarketUpdates {},
+            },
+        },
+        "dango/lending",
+        "dango/lending",
+    )?;
+
     // Create the `balances` map needed for instantiating bank.
     let balances = genesis_users
         .into_iter()
@@ -193,9 +225,10 @@ where
     // Token factory gets the "factory" namespace.
     // IBC trasfer gets the "ibc" namespace.
     let namespaces = btree_map! {
-        Part::from_str(amm::NAMESPACE)? => amm,
-        Part::from_str(token_factory::NAMESPACE)? => token_factory,
-        Part::from_str(mock_ibc_transfer::NAMESPACE)? => ibc_transfer,
+        amm::NAMESPACE.clone()           => amm,
+        ibc_transfer::NAMESPACE.clone()  => ibc_transfer,
+        lending::NAMESPACE.clone()       => lending,
+        token_factory::NAMESPACE.clone() => token_factory,
     };
 
     // Instantiate the bank contract.
@@ -224,11 +257,39 @@ where
         "dango/taxman",
     )?;
 
+    // Instantiate the oracle contract.
+    let oracle = instantiate(
+        &mut msgs,
+        oracle_code_hash,
+        &oracle::InstantiateMsg {
+            guardian_sets: btree_map! {
+                GUARDIAN_SETS_INDEX => GuardianSet {
+                    addresses: GUARDIANS_ADDRESSES
+                        .into_iter()
+                        .map(|addr| {
+                            let bytes = Binary::from_str(addr)
+                                .unwrap()
+                                .into_inner()
+                                .try_into()
+                                .unwrap();
+                            Hash160::from_inner(bytes)
+                        })
+                        .collect(),
+                    expiration_time: None,
+                },
+            },
+        },
+        "dango/oracle",
+        "dango/oracle",
+    )?;
+
     let contracts = Contracts {
         account_factory,
         amm,
         bank,
         ibc_transfer,
+        lending,
+        oracle,
         taxman,
         token_factory,
     };
@@ -244,6 +305,7 @@ where
         taxman,
         cronjobs: BTreeMap::new(),
         permissions,
+        max_orphan_age,
     };
 
     let app_configs = btree_map! {

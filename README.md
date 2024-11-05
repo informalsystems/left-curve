@@ -20,10 +20,14 @@ Prerequisites:
 - [Rust](https://rustup.rs/) with `wasm32-unknown-unknown` target
 - [Just](https://just.systems/man/en/)
 - [Docker](https://docs.docker.com/engine/install/)
+- [Node.js](https://nodejs.org/en/download/) [version 18+](https://github.com/left-curve/left-curve/blob/main/sdk/README.md?plain=1#L62)
 - [pnpm](https://pnpm.io/)
 
 We use [VS Code](https://code.visualstudio.com/) as text editor with the following plugins:
 
+- [AstroBuild](https://marketplace.visualstudio.com/items?itemName=astro-build.astro-vscode)
+- [Biomejs](https://marketplace.visualstudio.com/items?itemName=biomejs.biome)
+- [Code Spell Checker](https://marketplace.visualstudio.com/items?itemName=streetsidesoftware.code-spell-checker)
 - [Dependi](https://marketplace.visualstudio.com/items?itemName=fill-labs.dependi)
 - [EditorConfig](https://marketplace.visualstudio.com/items?itemName=EditorConfig.EditorConfig)
 - [Error Lens](https://marketplace.visualstudio.com/items?itemName=usernamehw.errorlens)
@@ -114,6 +118,14 @@ Storybook:
 
 ```shell
 pnpm storybook
+```
+
+Book:
+
+```shell
+cargo install mdbook
+cargo install mdbook-katex
+mdbook build
 ```
 
 ## Acknowledgement

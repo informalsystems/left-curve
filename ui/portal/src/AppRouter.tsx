@@ -11,12 +11,14 @@ const SignupView = lazy(() => import(/* webpackPrefetch: true */ "./views/Signup
 // Portal routes
 const AccountView = lazy(() => import(/* webpackPrefetch: true */ "./views/Account"));
 const TransferView = lazy(() => import(/* webpackPrefetch: true */ "./views/Transfer"));
+const SwapView = lazy(() => import(/* webpackPrefetch: true */ "./views/Swap"));
+const PoolView = lazy(() => import(/* webpackPrefetch: true */ "./views/Pool"));
 
 export const AppRouter: React.FC = () => {
   return (
     <Suspense
       fallback={
-        <div className="w-full flex flex-1 justify-center items-center">
+        <div className="h-screen w-full flex justify-center items-center">
           <Spinner size="lg" color="pink" />
         </div>
       }
@@ -29,6 +31,14 @@ export const AppRouter: React.FC = () => {
         <Route path="/" element={<AppLayout />}>
           <Route path="accounts/:index" element={<AccountView />} />ç
           <Route path="/transfer" element={<TransferView />} />
+          <Route path="/swap" element={<SwapView />} />
+          <Route path="/pools" element={<PoolView />} />
+          <Route
+            path="*"
+            element={
+              <div className="flex flex-1 justify-center items-center text-7xl font-bold">404</div>
+            }
+          />
         </Route>
       </Routes>
     </Suspense>

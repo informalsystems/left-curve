@@ -6,7 +6,7 @@ use {
         NumberConst, TestSuite, Timestamp, Udec128, Uint128, GENESIS_BLOCK_HASH,
         GENESIS_BLOCK_HEIGHT,
     },
-    grug_app::{AppError, Db, Vm},
+    grug_app::{AppError, Db, NaiveProposalPreparer, Vm},
     grug_db_disk::{DiskDb, TempDataDir},
     grug_db_memory::MemDb,
     grug_vm_rust::RustVm,
@@ -53,12 +53,14 @@ where
         "uusdc",
         Udec128::ZERO,
         Some(Uint128::new(10_000_000)),
+        Duration::from_seconds(7 * 24 * 60 * 60),
     )
     .unwrap();
 
-    let suite = TestSuite::new_with_db_and_vm(
+    let suite = TestSuite::new_with_db_vm_and_pp(
         db,
         vm,
+        NaiveProposalPreparer,
         "dev-1".to_string(),
         Duration::from_millis(250),
         1_000_000,
@@ -86,10 +88,10 @@ pub fn setup_test() -> (TestSuite, Accounts, Codes<ContractWrapper>, Contracts) 
         .with_authenticate(Box::new(dango_account_factory::authenticate))
         .build();
 
-    let account_spot = ContractBuilder::new(Box::new(dango_account_spot::instantiate))
-        .with_authenticate(Box::new(dango_account_spot::authenticate))
-        .with_receive(Box::new(dango_account_spot::receive))
-        .with_query(Box::new(dango_account_spot::query))
+    let account_margin = ContractBuilder::new(Box::new(dango_account_margin::instantiate))
+        .with_authenticate(Box::new(dango_account_margin::authenticate))
+        .with_receive(Box::new(dango_account_margin::receive))
+        .with_query(Box::new(dango_account_margin::query))
         .build();
 
     let account_safe = ContractBuilder::new(Box::new(dango_account_safe::instantiate))
@@ -97,6 +99,12 @@ pub fn setup_test() -> (TestSuite, Accounts, Codes<ContractWrapper>, Contracts) 
         .with_receive(Box::new(dango_account_safe::receive))
         .with_execute(Box::new(dango_account_safe::execute))
         .with_query(Box::new(dango_account_safe::query))
+        .build();
+
+    let account_spot = ContractBuilder::new(Box::new(dango_account_spot::instantiate))
+        .with_authenticate(Box::new(dango_account_spot::authenticate))
+        .with_receive(Box::new(dango_account_spot::receive))
+        .with_query(Box::new(dango_account_spot::query))
         .build();
 
     let amm = ContractBuilder::new(Box::new(dango_amm::instantiate))
@@ -114,6 +122,16 @@ pub fn setup_test() -> (TestSuite, Accounts, Codes<ContractWrapper>, Contracts) 
         .with_execute(Box::new(dango_ibc_transfer::execute))
         .build();
 
+    let oracle = ContractBuilder::new(Box::new(dango_oracle::instantiate))
+        .with_execute(Box::new(dango_oracle::execute))
+        .with_query(Box::new(dango_oracle::query))
+        .build();
+
+    let lending = ContractBuilder::new(Box::new(dango_lending::instantiate))
+        .with_execute(Box::new(dango_lending::execute))
+        .with_query(Box::new(dango_lending::query))
+        .build();
+
     let taxman = ContractBuilder::new(Box::new(dango_taxman::instantiate))
         .with_execute(Box::new(dango_taxman::execute))
         .with_query(Box::new(dango_taxman::query))
@@ -128,11 +146,14 @@ pub fn setup_test() -> (TestSuite, Accounts, Codes<ContractWrapper>, Contracts) 
 
     let codes = Codes {
         account_factory,
-        account_spot,
+        account_margin,
         account_safe,
+        account_spot,
         amm,
         bank,
         ibc_transfer,
+        lending,
+        oracle,
         taxman,
         token_factory,
     };

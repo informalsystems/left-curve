@@ -87,7 +87,12 @@ fn sends(c: &mut Criterion) {
 
                         let (data, credential) = accounts
                             .owner
-                            .sign_transaction_with_sequence(vec![msg.clone()], &suite.chain_id, 0)
+                            .sign_transaction_with_sequence(
+                                sender,
+                                vec![msg.clone()],
+                                &suite.chain_id,
+                                0,
+                            )
                             .unwrap();
 
                         Tx {
@@ -129,19 +134,21 @@ fn swaps(c: &mut Criterion) {
                 let (mut suite, mut accounts, _, contracts) = setup_benchmark(&dir, 100);
 
                 // Create an ATOM-USDC pool.
-                suite.execute_with_gas(
-                    &mut accounts.relayer,
-                    5_000_000,
-                    contracts.amm,
-                    &amm::ExecuteMsg::CreatePool(PoolParams::Xyk(XykParams {
-                        liquidity_fee_rate: FeeRate::new_unchecked(Udec128::new_bps(30)),
-                    })),
-                    Coins::try_from(btree_map! {
-                        "uatom" => 100_000_000,
-                        "uusdc" => 400_000_000,
-                    })
-                    .unwrap(),
-                );
+                suite
+                    .execute_with_gas(
+                        &mut accounts.relayer,
+                        5_000_000,
+                        contracts.amm,
+                        &amm::ExecuteMsg::CreatePool(PoolParams::Xyk(XykParams {
+                            liquidity_fee_rate: FeeRate::new_unchecked(Udec128::new_bps(30)),
+                        })),
+                        Coins::try_from(btree_map! {
+                            "uatom" => 100_000_000,
+                            "uusdc" => 400_000_000,
+                        })
+                        .unwrap(),
+                    )
+                    .should_succeed();
 
                 // Create and sign 100 transactions, each containing a swap.
                 let txs = (0..100)

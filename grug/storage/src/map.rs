@@ -1,5 +1,5 @@
 use {
-    crate::{Borsh, Codec, PathBuf, Prefix, PrefixBound, Prefixer, PrimaryKey},
+    crate::{Borsh, Codec, Path, Prefix, PrefixBound, Prefixer, PrimaryKey},
     grug_types::{Bound, Order, Record, StdError, StdResult, Storage},
     std::{borrow::Cow, marker::PhantomData},
 };
@@ -35,19 +35,16 @@ where
     K: PrimaryKey,
     C: Codec<T>,
 {
-    #[doc(hidden)]
-    pub fn path_raw(&self, key_raw: &[u8]) -> PathBuf<T, C> {
-        PathBuf::new(self.namespace, &[], Some(&Cow::Borrowed(key_raw)))
+    pub fn path_raw(&self, key_raw: &[u8]) -> Path<T, C> {
+        Path::new(self.namespace, &[], Some(&Cow::Borrowed(key_raw)))
     }
 
-    #[doc(hidden)]
-    pub fn path(&self, key: K) -> PathBuf<T, C> {
+    pub fn path(&self, key: K) -> Path<T, C> {
         let mut raw_keys = key.raw_keys();
         let last_raw_key = raw_keys.pop();
-        PathBuf::new(self.namespace, &raw_keys, last_raw_key.as_ref())
+        Path::new(self.namespace, &raw_keys, last_raw_key.as_ref())
     }
 
-    #[doc(hidden)]
     pub fn no_prefix(&self) -> Prefix<K, T, C> {
         Prefix::new(self.namespace, &[])
     }
@@ -63,43 +60,43 @@ where
     // ---------------------- methods for single entries -----------------------
 
     pub fn has_raw(&self, storage: &dyn Storage, key_raw: &[u8]) -> bool {
-        self.path_raw(key_raw).as_path().exists(storage)
+        self.path_raw(key_raw).exists(storage)
     }
 
     pub fn has(&self, storage: &dyn Storage, key: K) -> bool {
-        self.path(key).as_path().exists(storage)
+        self.path(key).exists(storage)
     }
 
     pub fn may_load_raw(&self, storage: &dyn Storage, key_raw: &[u8]) -> Option<Vec<u8>> {
-        self.path_raw(key_raw).as_path().may_load_raw(storage)
+        self.path_raw(key_raw).may_load_raw(storage)
     }
 
     pub fn may_load(&self, storage: &dyn Storage, key: K) -> StdResult<Option<T>> {
-        self.path(key).as_path().may_load(storage)
+        self.path(key).may_load(storage)
     }
 
     pub fn load_raw(&self, storage: &dyn Storage, key_raw: &[u8]) -> StdResult<Vec<u8>> {
-        self.path_raw(key_raw).as_path().load_raw(storage)
+        self.path_raw(key_raw).load_raw(storage)
     }
 
     pub fn load(&self, storage: &dyn Storage, key: K) -> StdResult<T> {
-        self.path(key).as_path().load(storage)
+        self.path(key).load(storage)
     }
 
     pub fn may_take_raw(&self, storage: &mut dyn Storage, key_raw: &[u8]) -> Option<Vec<u8>> {
-        self.path_raw(key_raw).as_path().may_take_raw(storage)
+        self.path_raw(key_raw).may_take_raw(storage)
     }
 
     pub fn may_take(&self, storage: &mut dyn Storage, key: K) -> StdResult<Option<T>> {
-        self.path(key).as_path().may_take(storage)
+        self.path(key).may_take(storage)
     }
 
     pub fn take_raw(&self, storage: &mut dyn Storage, key_raw: &[u8]) -> StdResult<Vec<u8>> {
-        self.path_raw(key_raw).as_path().take_raw(storage)
+        self.path_raw(key_raw).take_raw(storage)
     }
 
     pub fn take(&self, storage: &mut dyn Storage, key: K) -> StdResult<T> {
-        self.path(key).as_path().take(storage)
+        self.path(key).take(storage)
     }
 
     /// Using this function is not recommended. If the key or data isn't
@@ -108,32 +105,56 @@ where
     ///
     /// We prefix the function name with the word "unsafe" to highlight this.
     pub fn unsafe_save_raw(&self, storage: &mut dyn Storage, key_raw: &[u8], data_raw: &[u8]) {
-        self.path_raw(key_raw).as_path().save_raw(storage, data_raw)
+        self.path_raw(key_raw).save_raw(storage, data_raw)
     }
 
     pub fn save(&self, storage: &mut dyn Storage, key: K, data: &T) -> StdResult<()> {
-        self.path(key).as_path().save(storage, data)
+        self.path(key).save(storage, data)
     }
 
     pub fn remove_raw(&self, storage: &mut dyn Storage, key_raw: &[u8]) {
-        self.path_raw(key_raw).as_path().remove(storage)
+        self.path_raw(key_raw).remove(storage)
     }
 
     pub fn remove(&self, storage: &mut dyn Storage, key: K) {
-        self.path(key).as_path().remove(storage)
+        self.path(key).remove(storage)
     }
 
-    pub fn update<A, Err>(
+    pub fn may_update<F, E>(&self, storage: &mut dyn Storage, key: K, action: F) -> Result<T, E>
+    where
+        F: FnOnce(Option<T>) -> Result<T, E>,
+        E: From<StdError>,
+    {
+        self.path(key).may_update(storage, action)
+    }
+
+    pub fn update<F, E>(&self, storage: &mut dyn Storage, key: K, action: F) -> Result<T, E>
+    where
+        F: FnOnce(T) -> Result<T, E>,
+        E: From<StdError>,
+    {
+        self.path(key).update(storage, action)
+    }
+
+    pub fn may_modify<F, E>(
         &self,
         storage: &mut dyn Storage,
         key: K,
-        action: A,
-    ) -> Result<Option<T>, Err>
+        action: F,
+    ) -> Result<Option<T>, E>
     where
-        A: FnOnce(Option<T>) -> Result<Option<T>, Err>,
-        Err: From<StdError>,
+        F: FnOnce(Option<T>) -> Result<Option<T>, E>,
+        E: From<StdError>,
     {
-        self.path(key).as_path().update(storage, action)
+        self.path(key).may_modify(storage, action)
+    }
+
+    pub fn modify<F, E>(&self, storage: &mut dyn Storage, key: K, action: F) -> Result<Option<T>, E>
+    where
+        F: FnOnce(T) -> Result<Option<T>, E>,
+        E: From<StdError>,
+    {
+        self.path(key).modify(storage, action)
     }
 
     // -------------------- iteration methods (full bound) ---------------------
@@ -469,7 +490,7 @@ mod cosmwasm_tests {
     #[test]
     fn create_path() {
         let path = PEOPLE.path(b"john");
-        let key = path.storage_key;
+        let key = path.storage_key();
 
         // this should be prefixed(people) || john
         assert_eq!("people".len() + "john".len() + 2, key.len());
@@ -477,7 +498,7 @@ mod cosmwasm_tests {
         assert_eq!(b"john".to_vec().as_slice(), &key[8..]);
 
         let path = ALLOWANCE.path((b"john", b"maria"));
-        let key = path.storage_key;
+        let key = path.storage_key();
 
         // this should be prefixed(allow) || prefixed(john) || maria
         assert_eq!(
@@ -489,7 +510,7 @@ mod cosmwasm_tests {
         assert_eq!(b"maria".to_vec().as_slice(), &key[13..]);
 
         let path = TRIPLE.path((b"john", 8u8, "pedro"));
-        let key = path.storage_key;
+        let key = path.storage_key();
 
         // this should be prefixed(triple) || prefixed(john) || prefixed(8u8) || pedro
         assert_eq!(
@@ -508,7 +529,6 @@ mod cosmwasm_tests {
 
         // save and load on one key
         let john = PEOPLE.path(b"john");
-        let john = john.as_path();
         let data = Data {
             name: "John".to_string(),
             age: 32,
@@ -545,7 +565,7 @@ mod cosmwasm_tests {
         PEOPLE.remove(&mut storage, b"removed");
 
         // invalid, but non-empty data
-        storage.write(&PEOPLE.path(b"random").storage_key, b"random-data");
+        storage.write(PEOPLE.path(b"random").storage_key(), b"random-data");
 
         // any data, including invalid or empty is returned as "has"
         assert!(PEOPLE.has(&storage, b"john"));
@@ -562,7 +582,6 @@ mod cosmwasm_tests {
 
         // save and load on a composite key
         let allow = ALLOWANCE.path((b"owner", b"spender"));
-        let allow = allow.as_path();
         assert_eq!(None, allow.may_load(&storage).unwrap());
 
         allow.save(&mut storage, &1234).unwrap();
@@ -585,7 +604,6 @@ mod cosmwasm_tests {
 
         // save and load on a triple composite key
         let triple = TRIPLE.path((b"owner", 10u8, "recipient"));
-        let triple = triple.as_path();
         assert_eq!(None, triple.may_load(&storage).unwrap());
 
         triple.save(&mut storage, &1234).unwrap();
@@ -1310,10 +1328,10 @@ mod cosmwasm_tests {
 
         // save and load on three keys, one under different owner
         let key: (&[u8], &[u8]) = (b"owner", b"spender");
-        ALLOWANCE.update(&mut storage, key, add_ten).unwrap();
+        ALLOWANCE.may_modify(&mut storage, key, add_ten).unwrap();
 
         let twenty = ALLOWANCE
-            .update(&mut storage, key, add_ten)
+            .may_modify(&mut storage, key, add_ten)
             .unwrap()
             .unwrap();
         assert_eq!(20, twenty);
@@ -1354,14 +1372,14 @@ mod cosmwasm_tests {
         };
 
         let old_john = PEOPLE
-            .update(&mut storage, b"john", birthday)
+            .may_modify(&mut storage, b"john", birthday)
             .unwrap()
             .unwrap();
         assert_eq!(old_john.age, 33);
         assert_eq!(old_john.name, "John");
 
         let new_jack = PEOPLE
-            .update(&mut storage, b"jack", birthday)
+            .may_modify(&mut storage, b"jack", birthday)
             .unwrap()
             .unwrap();
         assert_eq!(new_jack.age, 0);
@@ -1401,7 +1419,7 @@ mod cosmwasm_tests {
 
         // simple update
         ALLOWANCE
-            .update(
+            .may_modify(
                 &mut storage,
                 (b"owner", b"spender"),
                 |v| -> StdResult<Option<u64>> { Ok(Some(v.unwrap_or_default() + 222)) },
@@ -1423,7 +1441,6 @@ mod cosmwasm_tests {
         // create a Path one time to use below
         {
             let john = PEOPLE.path(b"john");
-            let john = john.as_path();
 
             // Use this just like an Item above
             assert!(john.may_load(&storage).unwrap().is_none());
@@ -1438,13 +1455,12 @@ mod cosmwasm_tests {
         // same for composite keys, just use both parts in key()
         {
             let allow = ALLOWANCE.path((b"owner", b"spender"));
-            let allow = allow.as_path();
 
             allow.save(&mut storage, &1234).unwrap();
             assert_eq!(allow.load(&storage).unwrap(), 1234);
 
             allow
-                .update(&mut storage, |x| -> StdResult<Option<u64>> {
+                .may_modify(&mut storage, |x| -> StdResult<Option<u64>> {
                     Ok(Some(x.unwrap_or_default() * 2))
                 })
                 .unwrap();

@@ -4,7 +4,7 @@ use {
         account::single,
         account_factory::{self, Account, AccountParams, Username},
         auth::Key,
-        mock_ibc_transfer,
+        ibc_transfer,
     },
     grug::{
         btree_map, Addressable, ByteArray, Coins, Hash160, HashExt, Json, Message, ResultExt, Tx,
@@ -28,28 +28,32 @@ fn user_onboarding() {
     // User makes an initial deposit. The relayer delivers the packet.
     // The funds is held inside the IBC transfer contract because the recipient
     // account doesn't exist yet.
-    suite.execute(
-        &mut accounts.relayer,
-        contracts.ibc_transfer,
-        &mock_ibc_transfer::ExecuteMsg::ReceiveTransfer {
-            recipient: user.address(),
-        },
-        Coins::one("uusdc", 123).unwrap(),
-    );
+    suite
+        .execute(
+            &mut accounts.relayer,
+            contracts.ibc_transfer,
+            &ibc_transfer::ExecuteMsg::ReceiveTransfer {
+                recipient: user.address(),
+            },
+            Coins::one("uusdc", 123).unwrap(),
+        )
+        .should_succeed();
 
     // User uses account factory as sender to send an empty transaction.
     // Account factory should interpret this action as the user wishes to create
     // an account and claim the funds held in IBC transfer contract.
-    suite.execute(
-        &mut Factory::new(contracts.account_factory),
-        contracts.account_factory,
-        &account_factory::ExecuteMsg::RegisterUser {
-            username: user.username.clone(),
-            key: user.key,
-            key_hash: user.key_hash,
-        },
-        Coins::new(),
-    );
+    suite
+        .execute(
+            &mut Factory::new(contracts.account_factory),
+            contracts.account_factory,
+            &account_factory::ExecuteMsg::RegisterUser {
+                username: user.username.clone(),
+                key: user.key,
+                key_hash: user.key_hash,
+            },
+            Coins::new(),
+        )
+        .should_succeed();
 
     // The user's key should have been recorded in account factory.
     suite
@@ -101,14 +105,16 @@ fn onboarding_existing_user() {
         );
 
         // Make the initial deposit.
-        suite.execute(
-            &mut accounts.relayer,
-            contracts.ibc_transfer,
-            &mock_ibc_transfer::ExecuteMsg::ReceiveTransfer {
-                recipient: user.address(),
-            },
-            Coins::one("uusdc", 123).unwrap(),
-        );
+        suite
+            .execute(
+                &mut accounts.relayer,
+                contracts.ibc_transfer,
+                &ibc_transfer::ExecuteMsg::ReceiveTransfer {
+                    recipient: user.address(),
+                },
+                Coins::one("uusdc", 123).unwrap(),
+            )
+            .should_succeed();
 
         // Send the register user message with account factory.
         let tx = Tx {
@@ -124,11 +130,11 @@ fn onboarding_existing_user() {
                 Coins::new(),
             )
             .unwrap()],
-            data: Json::Null,
-            credential: Json::Null,
+            data: Json::null(),
+            credential: Json::null(),
         };
 
-        suite.send_transaction(tx.clone());
+        suite.send_transaction(tx.clone()).should_succeed();
 
         tx
     };
@@ -167,8 +173,8 @@ fn onboarding_without_deposit() {
                 Coins::new(),
             )
             .unwrap()],
-            data: Json::Null,
-            credential: Json::Null,
+            data: Json::null(),
+            credential: Json::null(),
         })
         .should_fail_with_error("data not found!");
 }

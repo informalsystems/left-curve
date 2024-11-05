@@ -2,11 +2,11 @@
 
 import { useAccount, useBalances, usePrices } from "@leftcurve/react";
 
-import { Button } from "~/components";
+import { Button } from "../../";
 
-import { formatAddress } from "@leftcurve/utils";
+import { truncateAddress } from "@leftcurve/utils";
 import { type VariantProps, tv } from "tailwind-variants";
-import { twMerge } from "~/utils";
+import { twMerge } from "../../../utils";
 
 import { CardMarginBottom } from "./CardMarginBottom";
 import { CardSafeBottom } from "./CardSafeBottom";
@@ -57,7 +57,7 @@ export const AccountCard: React.FC<CardProps> = ({
               className={twMerge(title({ color: account.type, isActive }))}
             >{`${account.type} account #${account.index}`}</p>
             <p className={twMerge(subtitle({ color: account.type, isActive }))}>
-              {formatAddress(account.address)}
+              {truncateAddress(account.address)}
             </p>
           </div>
           <img
@@ -83,7 +83,7 @@ export const AccountCard: React.FC<CardProps> = ({
         </div>
       </div>
       {isActive ? (
-        <Button variant="outline" color={color} onClick={() => manageAction?.(account)}>
+        <Button variant="bordered" color="purple" size="sm" onClick={() => manageAction?.(account)}>
           Manage
         </Button>
       ) : null}
