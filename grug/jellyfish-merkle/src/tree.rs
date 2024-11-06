@@ -877,7 +877,30 @@ mod tests {
 
         batch
     }
+    #[test]
+    fn reproducing_quint_supersimplevsfancy_bug() {
+        let mut storage = MockStorage::new();
 
+        let b1 = parse_to_batch(
+            r#"
+ Set({ key_hash: [0, 0, 1, 0], op: Delete }, { key_hash: [0, 1, 1, 0], op: Delete }, { key_hash: [1, 0, 0, 0], op: Insert([13]) }, { key_hash: [1, 0, 0, 1], op: Delete }, { key_hash: [1, 0, 1, 1], op: Delete })
+    "#,
+        );
+        let b2 = parse_to_batch(
+            r#"
+ Set({ key_hash: [0, 0, 0, 0], op: Delete }, { key_hash: [0, 0, 1, 1], op: Delete }, { key_hash: [1, 0, 1, 0], op: Delete }, { key_hash: [1, 1, 0, 0], op: Delete }, { key_hash: [1, 1, 0, 1], op: Delete })
+    "#,
+        );
+    let _ = TREE.apply_raw(&mut storage, 0, 1, &b1);
+    let _ = TREE.apply_raw(&mut storage, 1, 2, &b2);
+    for key in TREE.nodes.keys(&storage, None, None, Order::Ascending) {
+        let a = TREE.nodes.may_load(
+            &storage,
+            ((key.clone().unwrap()).0, &(key.clone().unwrap()).1),
+        );
+        println!("{:?}: {:#?}", key.unwrap(), a.unwrap());
+    }
+    }
     #[test]
     fn reproducing_from_quint() {
         let mut storage = MockStorage::new();
