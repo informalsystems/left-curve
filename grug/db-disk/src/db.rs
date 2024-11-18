@@ -702,7 +702,8 @@ mod tests {
         crate::{DiskDb, TempDataDir},
         grug_app::{Db, PrunableDb},
         grug_jmt::{
-            verify_proof, MembershipProof, NonMembershipProof, Proof, ProofNode, ICS23_PROOF_SPEC,
+            parse_to_batch, verify_proof, MembershipProof, NonMembershipProof, Proof, ProofNode,
+            ICS23_PROOF_SPEC,
         },
         grug_types::{Batch, Hash256, HashExt, Op, Order, Storage},
         hex_literal::hex,
@@ -1179,6 +1180,38 @@ mod tests {
     /// incorrectly thinks "a" exists as the right neighbor.
     ///
     /// When loading the key from state storage, it panics.
+    #[test]
+    fn ics23_quint_violation() {
+        let path = TempDataDir::new("__grug_disk_db_ics23_quint_violation");
+        let db = DiskDb::open(&path).unwrap();
+        let key = b"&".to_vec();
+
+        let input1 = r#"
+        Set({ key_hash: [0, 0, 0, 0], op: Insert([15]) }, { key_hash: [0, 0, 0, 1], op: Insert([13]) }, { key_hash: [1, 0, 1, 0], op: Insert([8]) }, { key_hash: [1, 0, 1, 1], op: Insert([13]) }, { key_hash: [1, 1, 1, 0], op: Insert([7]) })
+           "#;
+        let input2 = r#"
+        Set({ key_hash: [0, 1, 1, 0], op: Delete }, { key_hash: [1, 0, 0, 0], op: Insert([12]) }, { key_hash: [1, 0, 0, 1], op: Insert([5]) }, { key_hash: [1, 1, 0, 1], op: Insert([2]) }, { key_hash: [1, 1, 1, 0], op: Insert([15]) })
+           "#;
+        let batch1 = parse_to_batch(input1);
+        let (version1, maybe_root1) = db.flush_and_commit(Batch::from(batch1)).unwrap();
+        let proof1 = db.ics23_prove(key.clone(), Some(version1)).unwrap();
+        assert!(ics23::verify_non_membership::<HostFunctionsManager>(
+            &proof1,
+            &ICS23_PROOF_SPEC,
+            &maybe_root1.unwrap().to_vec(),
+            &key,
+        ));
+        let batch2 = parse_to_batch(input2);
+        let (version2, maybe_root2) = db.flush_and_commit(Batch::from(batch2)).unwrap();
+        let proof2 = db.ics23_prove(key.clone(), Some(version2)).unwrap();
+        assert!(ics23::verify_membership::<HostFunctionsManager>(
+            &proof2,
+            &ICS23_PROOF_SPEC,
+            &maybe_root2.unwrap().to_vec(),
+            &key,
+            &[5]
+        ));
+    }
     #[test]
     fn ics23_prove_after_deletion() {
         let path = TempDataDir::new("__grug_disk_db_ics23_prove_after_deletion");
