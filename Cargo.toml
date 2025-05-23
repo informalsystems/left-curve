@@ -56,7 +56,7 @@ homepage      = "https://grug.build"
 keywords      = ["blockchain", "wasm"]
 license       = "TBD"
 repository    = "https://github.com/left-curve/left-curve"
-rust-version  = "1.80"
+rust-version  = "1.83"
 version       = "0.0.0"
 
 [workspace.dependencies]

@@ -51,6 +51,9 @@ tower-abci              = { workspace = true }
 tracing                 = { workspace = true }
 tracing-subscriber      = { workspace = true }
 
+# New dependencies for node & consensus
+malachitebft-app = { package = "informalsystems-malachitebft-app", version = "0.2.0" }
+
 [[bin]]
 name = "dango"
 path = "src/main.rs"
