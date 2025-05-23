@@ -28,4 +28,18 @@ tower         = { workspace = true, optional = true }
 tower-abci    = { workspace = true, optional = true }
 tracing       = { workspace = true, optional = true }
 
+# New dependencies for node & consensus
+async-trait           = { version = "0.1.74" }
+base64                = { version = "0.13.0" }
+eyre                  = { version = "0.6.11" }
+malachitebft-app      = { package = "informalsystems-malachitebft-app", version = "0.2.0" }
+malachitebft-config   = { package = "informalsystems-malachitebft-config", version = "0.2.0" }
+malachitebft-core-types = { package = "informalsystems-malachitebft-core-types", version = "0.2.0" }
+malachitebft-engine   = { package = "informalsystems-malachitebft-engine", version = "0.2.0" }
+ractor               = { version = "0.14.6", default-features = false, features = ["async-trait", "tokio_runtime"] }
+rand                 = { version = "0.8.5" }
+serde                = { version = "1.0", features = ["derive"] }
+serde_json           = { version = "1.0" }
+tokio                = { version = "1.35.1", features = ["full"] }
+
 [dev-dependencies]

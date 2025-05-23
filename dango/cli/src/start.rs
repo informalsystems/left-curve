@@ -9,13 +9,15 @@ use {
     dango_genesis::GenesisCodes,
     dango_httpd::{graphql::build_schema, server::config_app},
     dango_proposal_preparer::ProposalPreparer,
-    grug_app::{App, AppError, Db, Indexer, NullIndexer},
+    grug_app::{App, AppError, Db, GrugNode, Indexer, NullIndexer},
     grug_client::TendermintRpcClient,
     grug_db_disk::DiskDb,
     grug_types::{GIT_COMMIT, HashExt},
     grug_vm_hybrid::HybridVm,
     indexer_httpd::context::Context,
     indexer_sql::non_blocking_indexer,
+    malachitebft_app::node::Node,
+    std::path::PathBuf,
     std::{fmt::Debug, sync::Arc, time},
     tokio::signal::unix::{SignalKind, signal},
     tower::ServiceBuilder,
@@ -39,23 +41,26 @@ impl StartCmd {
         let codes = HybridVm::genesis_codes();
 
         // Create hybird VM.
-        let vm = HybridVm::new(cfg.grug.wasm_cache_capacity, [
-            codes.account_factory.to_bytes().hash256(),
-            codes.account_margin.to_bytes().hash256(),
-            codes.account_multi.to_bytes().hash256(),
-            codes.account_spot.to_bytes().hash256(),
-            codes.bank.to_bytes().hash256(),
-            codes.dex.to_bytes().hash256(),
-            codes.gateway.to_bytes().hash256(),
-            codes.hyperlane.ism.to_bytes().hash256(),
-            codes.hyperlane.mailbox.to_bytes().hash256(),
-            codes.hyperlane.va.to_bytes().hash256(),
-            codes.lending.to_bytes().hash256(),
-            codes.oracle.to_bytes().hash256(),
-            codes.taxman.to_bytes().hash256(),
-            codes.vesting.to_bytes().hash256(),
-            codes.warp.to_bytes().hash256(),
-        ]);
+        let vm = HybridVm::new(
+            cfg.grug.wasm_cache_capacity,
+            [
+                codes.account_factory.to_bytes().hash256(),
+                codes.account_margin.to_bytes().hash256(),
+                codes.account_multi.to_bytes().hash256(),
+                codes.account_spot.to_bytes().hash256(),
+                codes.bank.to_bytes().hash256(),
+                codes.dex.to_bytes().hash256(),
+                codes.gateway.to_bytes().hash256(),
+                codes.hyperlane.ism.to_bytes().hash256(),
+                codes.hyperlane.mailbox.to_bytes().hash256(),
+                codes.hyperlane.va.to_bytes().hash256(),
+                codes.lending.to_bytes().hash256(),
+                codes.oracle.to_bytes().hash256(),
+                codes.taxman.to_bytes().hash256(),
+                codes.vesting.to_bytes().hash256(),
+                codes.warp.to_bytes().hash256(),
+            ],
+        );
 
         // Run ABCI server, optionally with indexer and httpd server.
         if cfg.indexer.enabled {
@@ -83,6 +88,10 @@ impl StartCmd {
                     Arc::new(TendermintRpcClient::new(&cfg.tendermint.rpc_addr)?),
                     indexer.indexer_path.clone(),
                 );
+
+                // Consensus upgrade: Replace the call to `run_with_indexer` with call
+                // to `run_node_with_consensus` instead. Will require to trickle down
+                // (parts of) `app_dir` to the consensus sub-system
 
                 // NOTE: If the httpd was heavily used, it would be better to
                 // run it in a separate tokio runtime.
@@ -117,6 +126,51 @@ impl StartCmd {
             tracing::error!("Failed to run HTTP server: {err:?}");
             err.into()
         })
+    }
+
+    // Similar to `run_with_indexer` but runs consensus in-process
+    #[allow(unused)]
+    async fn run_node_with_consensus<ID>(
+        self,
+        grug_cfg: GrugConfig,
+        tendermint_cfg: TendermintConfig,
+        db: DiskDb,
+        vm: HybridVm,
+        mut indexer: ID,
+    ) -> anyhow::Result<()>
+    where
+        ID: Indexer + Send + 'static,
+        ID::Error: Debug,
+        AppError: From<ID::Error>,
+    {
+        indexer
+            .start(&db.state_storage(None)?)
+            .expect("Can't start indexer");
+
+        // Node bootstrap, then scaffold it into the tokio runtime
+        // TODO: Assuming ~/.grug for config, but this should be instead
+        // the configuration for validator node (pub key, priv key, p2p, etc)
+        let node = GrugNode::new(PathBuf::from("~/.grug/"));
+
+        let b = node.run();
+
+        // Pre-existing code from Dango::Cli
+        // ..
+        let mut sigint = signal(SignalKind::interrupt())?;
+        let mut sigterm = signal(SignalKind::terminate())?;
+
+        tokio::select! {
+            // Consensus upgrade: call into `node.run`
+            // result = async { node.run() },
+            _ = sigint.recv() => {
+                tracing::info!("Received SIGINT, shutting down");
+                Ok(())
+            },
+            _ = sigterm.recv() => {
+                tracing::info!("Received SIGTERM, shutting down");
+                Ok(())
+            },
+        }
     }
 
     async fn run_with_indexer<ID>(

@@ -1,6 +1,7 @@
 #[cfg(feature = "abci")]
 mod abci;
 mod app;
+mod consensus;
 mod error;
 mod event;
 mod execute;
@@ -16,6 +17,6 @@ mod traits;
 mod vm;
 
 pub use crate::{
-    app::*, error::*, event::*, execute::*, gas::*, indexer::*, proposal_preparer::*, providers::*,
-    query::*, state::*, submessage::*, traits::*, vm::*,
+    app::*, consensus::*, error::*, event::*, execute::*, gas::*, indexer::*, proposal_preparer::*,
+    providers::*, query::*, state::*, submessage::*, traits::*, vm::*,
 };
